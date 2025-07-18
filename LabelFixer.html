@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>D365FO Label Duplicate Cleaner - Local JS Edition</title>
+    <meta name="viewport" content="width=1100">
+    <style>
+        body { font-family: Arial, sans-serif; background: #f9fafb; margin:0; padding:0;}
+        header { background: #0e72be; color: white; padding: 18px 0 8px 32px; font-size: 2rem; font-weight: bold;}
+        .container { display: flex; gap: 24px; padding: 26px 20px 10px 20px; }
+        .col { flex: 1; display: flex; flex-direction: column; }
+        .col.middle { flex: 0 0 350px; max-width:350px;}
+        textarea, .result-area { font-family: Consolas, monospace; font-size: 15px; width: 100%; min-height: 520px; padding: 10px; border-radius: 7px; border: 1.3px solid #bfc9d1;}
+        .result-area { background: #f5f8fa; }
+        .dup-list { max-height: 670px; overflow-y: auto; background: #f5f7fa; border-radius:8px; border:1px solid #d0dae2; padding:8px; }
+        .dup-block { background: #f2f4fb; border:1px solid #c3c9de; border-radius:6px; margin-bottom:10px; padding:8px 10px 5px 10px; }
+        .dup-label { color:#0e72be; font-size: 1.13rem; font-weight: bold; margin-bottom:5px;}
+        .dup-radio { margin-right:8px;}
+        .dup-value { font-size:1rem; }
+        .panel-header { font-size: 1.15rem; font-weight: bold; margin: 0 0 10px 0; }
+        .stats { font-size:1.1rem; margin-top:14px; }
+        .stats .unique { color: #1aa800; font-weight: bold;}
+        .stats .dups { color: #d90000; font-weight: bold; margin-left: 14px;}
+        .copy-btn { padding:10px 38px; margin-top:16px; background: #e0f0ff; color:#0054a6; border:1.5px solid #8dc7eb; border-radius:6px; font-size:1.2rem; font-weight:bold; cursor:pointer; }
+        .copy-btn:hover { background:#c2e6ff;}
+        .help-link { color: #1575d4; text-decoration: underline; cursor:pointer; margin-left: 28px;}
+        .about { font-size:0.98rem; color:#696969; margin-top:20px; margin-bottom:5px; text-align:center;}
+        @media (max-width: 1200px) {
+            .container { flex-direction: column;}
+            .col.middle { max-width:none; width:100%;}
+            textarea, .result-area { min-height: 160px;}
+        }
+    </style>
+</head>
+<body>
+    <header>
+        D365FO Label Duplicate Cleaner        
+    </header>
+    <div class="container">
+        <!-- Left -->
+        <div class="col">
+            <div class="panel-header">Paste Label Content Here:</div>
+            <textarea id="input" placeholder="Paste the contents of the label files you want to merge and clean into the box on the left. The program automatically removes lines that are completely identical. You only need to  select from labels with the same name but different values. Duplicate labels appear in the middle panel. For each label, select the value you want to keep. The result is updated in the box on the right and you can easily copy it with the 'Copy' button."></textarea>
+            <div class="stats" id="stats"></div>
+        </div>
+        <!-- Middle (duplicates) -->
+        <div class="col middle">
+            <div class="panel-header">Duplicate Labels (Select One):</div>
+            <div class="dup-list" id="dupList"></div>
+        </div>
+        <!-- Right (result) -->
+        <div class="col">
+            <div class="panel-header">Result (Sorted & With Duplicates Cleaned):</div>
+            <textarea class="result-area" id="output" readonly></textarea>
+            <button class="copy-btn" onclick="copyResult()">Copy</button>
+        </div>
+    </div>
+    <div class="about">
+        Version 1.0 &nbsp; | &nbsp; Contact: afk605@gmail.com <br>
+        <span style="color:#4d4d4d;">All processing happens locally in your browser. No data is sent to any server.</span>
+    </div>
+
+    <script>
+        const inputEl = document.getElementById('input');
+        const outputEl = document.getElementById('output');
+        const dupListEl = document.getElementById('dupList');
+        const statsEl = document.getElementById('stats');
+
+        let duplicateChoices = {}; // labelName: selected index
+
+        // Show help popup
+        function showHelp() {
+            alert(
+                "Version 1.0\n" +
+                "afk605@gmail.com\n" +                
+            );
+        }
+
+        // Remove identical lines (label+value identical), keep only one
+        function deduplicateExactLines(lines) {
+            const seen = new Set();
+            const result = [];
+            let removed = 0;
+            for(const line of lines) {
+                const clean = line.trim();
+                if(!clean || !clean.includes('=')) continue;
+                const [label, ...rest] = clean.split('=');
+                const value = rest.join('=').trim();
+                const key = label.trim() + "===" + value;
+                if(seen.has(key)) { removed++; continue; }
+                seen.add(key);
+                result.push(label.trim() + "=" + value);
+            }
+            return { lines: result, removed };
+        }
+
+        // Parse label lines to a map: labelName => array of values
+        function parseLabels(lines) {
+            const map = {};
+            lines.forEach((line, idx) => {
+                if(!line || !line.includes('=')) return;
+                const [label, ...rest] = line.split('=');
+                const value = rest.join('=').trim();
+                const name = label.trim();
+                if(!map[name]) map[name] = [];
+                map[name].push({ value, idx, orig: line });
+            });
+            return map;
+        }
+
+        // Build duplicate selector
+        function buildDuplicatePanel(labelMap) {
+            dupListEl.innerHTML = '';
+            let dupsFound = false;
+            Object.entries(labelMap).forEach(([label, arr]) => {
+                if(arr.length > 1) {
+                    dupsFound = true;
+                    // Check if all values are identical; if so, skip (should not happen due to deduplication)
+                    const values = arr.map(x=>x.value);
+                    const allSame = values.every(val => val === values[0]);
+                    if(allSame) return;
+                    const block = document.createElement('div');
+                    block.className = 'dup-block';
+                    const title = document.createElement('div');
+                    title.className = 'dup-label';
+                    title.innerText = label;
+                    block.appendChild(title);
+                    arr.forEach((entry, i) => {
+                        const id = `${label}_radio_${i}`;
+                        const radio = document.createElement('input');
+                        radio.type = 'radio';
+                        radio.name = 'dup_' + label;
+                        radio.className = 'dup-radio';
+                        radio.id = id;
+                        radio.value = i;
+                        if((duplicateChoices[label]===undefined && i===0) || duplicateChoices[label] == i) radio.checked = true;
+                        radio.onclick = () => { duplicateChoices[label] = i; updateAll(); }
+                        const labelValue = document.createElement('label');
+                        labelValue.setAttribute('for', id);
+                        labelValue.className = 'dup-value';
+                        labelValue.innerText = entry.value;
+                        block.appendChild(radio);
+                        block.appendChild(labelValue);
+                        block.appendChild(document.createElement('br'));
+                    });
+                    dupListEl.appendChild(block);
+                }
+            });
+            if(!dupsFound) {
+                dupListEl.innerHTML = '<div style="color:green;font-size:1.13rem;padding:14px 0;">No duplicate labels found!</div>';
+            }
+        }
+
+        // Build result
+        function buildResult(labelMap) {
+            let entries = [];
+            let keys = Object.keys(labelMap).sort((a,b) => a.localeCompare(b));
+            keys.forEach(label => {
+                if(labelMap[label].length === 1) {
+                    entries.push(label + '=' + labelMap[label][0].value);
+                } else {
+                    // check if all values are identical (should not be, but just in case)
+                    const arr = labelMap[label];
+                    const values = arr.map(x=>x.value);
+                    const allSame = values.every(val => val === values[0]);
+                    if(allSame) {
+                        entries.push(label + '=' + values[0]);
+                    } else {
+                        let idx = duplicateChoices[label];
+                        if(idx === undefined) idx = 0;
+                        entries.push(label + '=' + arr[idx].value);
+                    }
+                }
+            });
+            outputEl.value = entries.join('\n');
+        }
+
+        // Update stats
+        function buildStats(labelMap, dedupedRemoved) {
+            const total = Object.keys(labelMap).length;
+            const dups = Object.values(labelMap).filter(x => x.length > 1).length;
+            statsEl.innerHTML =
+                `<span class="unique">Unique Labels: ${total}</span>` +
+                `<span class="dups">Duplicates: ${dups}</span>` +
+                (dedupedRemoved > 0 ?
+                    `<br><span style="color:#ca7e00;font-size:0.98rem;">${dedupedRemoved} completely identical lines were automatically removed. You can clean up labels with different values using the selection panel.</span>`
+                    : '');
+        }
+
+        // All-in-one update function
+        function updateAll() {
+            let text = inputEl.value || '';
+            let lines = text.split(/\r?\n/);
+            const deduped = deduplicateExactLines(lines);
+            if(deduped.removed > 0) {
+                inputEl.value = deduped.lines.join('\n');
+                lines = deduped.lines;
+                setTimeout(()=>alert(`${deduped.removed} completely identical lines were automatically removed.\nYou can clean up labels with different values using the selection panel.`),50);
+            }
+            const labelMap = parseLabels(lines);
+            buildDuplicatePanel(labelMap);
+            buildResult(labelMap);
+            buildStats(labelMap, deduped.removed);
+        }
+
+        // Copy result to clipboard
+        function copyResult() {
+            outputEl.select();
+            document.execCommand('copy');
+            alert('Result copied to clipboard!');
+        }
+
+        // React to input
+        inputEl.addEventListener('input', updateAll);
+
+        // Auto-run on first load
+        updateAll();
+    </script>
+</body>
+</html>
