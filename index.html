@@ -21,8 +21,32 @@
         .stats { font-size:1.1rem; margin-top:14px; }
         .stats .unique { color: #1aa800; font-weight: bold;}
         .stats .dups { color: #d90000; font-weight: bold; margin-left: 14px;}
-        .copy-btn { padding:10px 38px; margin-top:16px; background: #e0f0ff; color:#0054a6; border:1.5px solid #8dc7eb; border-radius:6px; font-size:1.2rem; font-weight:bold; cursor:pointer; }
-        .copy-btn:hover { background:#c2e6ff;}
+        .copy-btn { padding:10px 38px; margin-top:16px; background: #e0f0ff; color:#0054a6; border:1.5px solid #8dc7eb; border-radius:6px; font-size:1.2rem; font-weight:bold; cursor:pointer; transition: background 0.25s;}
+        .copy-btn.copied { background: #19bb49; color: white; border-color: #43e079; }
+        .message-fade {
+            min-height: 26px;
+            font-size: 1.06rem;
+            margin-top: 9px;
+            padding: 4px 14px;
+            border-radius: 6px;
+            background: linear-gradient(90deg, #1b7d2a 0%, #55db70 100%);
+            color: #fff;
+            font-weight: 500;
+            display: inline-block;
+            opacity: 1;
+            transition: opacity 0.7s, background 1.2s;
+            pointer-events: none;
+            position: relative;
+            left: 0;
+        }
+        .message-fade.hide {
+            opacity: 0;
+            transition: opacity 0.7s;
+        }
+        .message-fade.light {
+            background: linear-gradient(90deg, #d2fbdc 0%, #e9f7ee 100%);
+            color: #20913e;
+        }
         @media (max-width: 1200px) {
             .container { flex-direction: column;}
             .col.middle { max-width:none; width:100%;}
@@ -40,6 +64,7 @@
             <div class="panel-header">Paste Label Content Here:</div>
             <textarea id="input" placeholder="Paste label file contents here. Completely identical lines will be removed automatically. You will only need to select from labels with different values. The cleaned result appears on the right."></textarea>
             <div class="stats" id="stats"></div>
+            <div id="message" class="message-fade" style="opacity:0;"></div>
         </div>
         <!-- Middle (duplicates) -->
         <div class="col middle">
@@ -50,7 +75,7 @@
         <div class="col">
             <div class="panel-header">Result (Sorted & Cleaned):</div>
             <textarea class="result-area" id="output" readonly></textarea>
-            <button class="copy-btn" onclick="copyResult()">Copy</button>
+            <button class="copy-btn" id="copyBtn" onclick="copyResult()">Copy</button>
         </div>
     </div>
     <script>
@@ -58,6 +83,8 @@
         const outputEl = document.getElementById('output');
         const dupListEl = document.getElementById('dupList');
         const statsEl = document.getElementById('stats');
+        const messageEl = document.getElementById('message');
+        const copyBtn = document.getElementById('copyBtn');
 
         let duplicateChoices = {}; // labelName: selected index
 
@@ -166,10 +193,25 @@
             const dups = Object.values(labelMap).filter(x => x.length > 1).length;
             statsEl.innerHTML =
                 `<span class="unique">Unique Labels: ${total}</span>` +
-                `<span class="dups">Duplicates: ${dups}</span>` +
-                (dedupedRemoved > 0 ?
-                    `<br><span style="color:#ca7e00;font-size:0.98rem;">${dedupedRemoved} completely identical lines were automatically removed. You can clean up labels with different values using the selection panel.</span>`
-                    : '');
+                `<span class="dups">Duplicates: ${dups}</span>`;
+        }
+
+        // Show fade-out message with background animation
+        function showMessage(msg, duration=1500) {
+            messageEl.innerText = msg;
+            messageEl.style.opacity = "1";
+            messageEl.classList.remove("hide", "light");
+            // Start with dark background
+            messageEl.style.background = "linear-gradient(90deg, #1b7d2a 0%, #55db70 100%)";
+            messageEl.style.color = "#fff";
+            // After 300ms, switch to light background
+            setTimeout(() => {
+                messageEl.classList.add("light");
+            }, 300);
+            clearTimeout(messageEl._timeout);
+            messageEl._timeout = setTimeout(() => {
+                messageEl.classList.add("hide");
+            }, duration);
         }
 
         // All-in-one update function
@@ -180,7 +222,7 @@
             if(deduped.removed > 0) {
                 inputEl.value = deduped.lines.join('\n');
                 lines = deduped.lines;
-                setTimeout(()=>alert(`${deduped.removed} completely identical lines were automatically removed.\nYou can clean up labels with different values using the selection panel.`),50);
+                showMessage(`${deduped.removed} completely identical lines were removed.`, 1600);
             }
             const labelMap = parseLabels(lines);
             buildDuplicatePanel(labelMap);
@@ -188,11 +230,17 @@
             buildStats(labelMap, deduped.removed);
         }
 
-        // Copy result to clipboard
+        // Copy result to clipboard with visual feedback
         function copyResult() {
             outputEl.select();
             document.execCommand('copy');
-            alert('Result copied to clipboard!');
+            copyBtn.innerText = "Copied!";
+            copyBtn.classList.add("copied");
+            setTimeout(() => {
+                copyBtn.innerText = "Copy";
+                copyBtn.classList.remove("copied");
+            }, 900);
+            showMessage("Result copied to clipboard!", 950);
         }
 
         // React to input
