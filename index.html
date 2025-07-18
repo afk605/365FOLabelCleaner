@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>D365FO Label Duplicate Cleaner - Local JS Edition</title>
+    <title>D365FO Label Duplicate Cleaner</title>
     <meta name="viewport" content="width=1100">
     <style>
         body { font-family: Arial, sans-serif; background: #f9fafb; margin:0; padding:0;}
@@ -23,8 +23,6 @@
         .stats .dups { color: #d90000; font-weight: bold; margin-left: 14px;}
         .copy-btn { padding:10px 38px; margin-top:16px; background: #e0f0ff; color:#0054a6; border:1.5px solid #8dc7eb; border-radius:6px; font-size:1.2rem; font-weight:bold; cursor:pointer; }
         .copy-btn:hover { background:#c2e6ff;}
-        .help-link { color: #1575d4; text-decoration: underline; cursor:pointer; margin-left: 28px;}
-        .about { font-size:0.98rem; color:#696969; margin-top:20px; margin-bottom:5px; text-align:center;}
         @media (max-width: 1200px) {
             .container { flex-direction: column;}
             .col.middle { max-width:none; width:100%;}
@@ -34,13 +32,13 @@
 </head>
 <body>
     <header>
-        D365FO Label Duplicate Cleaner        
+        D365FO Label Duplicate Cleaner
     </header>
     <div class="container">
         <!-- Left -->
         <div class="col">
             <div class="panel-header">Paste Label Content Here:</div>
-            <textarea id="input" placeholder="Paste the contents of the label files you want to merge and clean into the box on the left. The program automatically removes lines that are completely identical. You only need to  select from labels with the same name but different values. Duplicate labels appear in the middle panel. For each label, select the value you want to keep. The result is updated in the box on the right and you can easily copy it with the 'Copy' button."></textarea>
+            <textarea id="input" placeholder="Paste label file contents here. Completely identical lines will be removed automatically. You will only need to select from labels with different values. The cleaned result appears on the right."></textarea>
             <div class="stats" id="stats"></div>
         </div>
         <!-- Middle (duplicates) -->
@@ -50,16 +48,11 @@
         </div>
         <!-- Right (result) -->
         <div class="col">
-            <div class="panel-header">Result (Sorted & With Duplicates Cleaned):</div>
+            <div class="panel-header">Result (Sorted & Cleaned):</div>
             <textarea class="result-area" id="output" readonly></textarea>
             <button class="copy-btn" onclick="copyResult()">Copy</button>
         </div>
     </div>
-    <div class="about">
-        Version 1.0 &nbsp; | &nbsp; Contact: afk605@gmail.com <br>
-        <span style="color:#4d4d4d;">All processing happens locally in your browser. No data is sent to any server.</span>
-    </div>
-
     <script>
         const inputEl = document.getElementById('input');
         const outputEl = document.getElementById('output');
@@ -67,14 +60,6 @@
         const statsEl = document.getElementById('stats');
 
         let duplicateChoices = {}; // labelName: selected index
-
-        // Show help popup
-        function showHelp() {
-            alert(
-                "Version 1.0\n" +
-                "afk605@gmail.com\n" +                
-            );
-        }
 
         // Remove identical lines (label+value identical), keep only one
         function deduplicateExactLines(lines) {
